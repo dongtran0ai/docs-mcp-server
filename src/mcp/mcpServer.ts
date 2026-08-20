@@ -10,6 +10,22 @@ import type { McpServerTools } from "./tools";
 import { createError, createResponse } from "./utils";
 
 /**
+ * Splits a comma-separated pattern string into an array of trimmed, non-empty
+ * patterns. MCP tool arguments arrive as a single string; the scraper expects
+ * an array.
+ * @param patterns The raw comma-separated pattern string.
+ * @returns An array of patterns, or undefined if no patterns were provided.
+ */
+function splitPatterns(patterns: string | undefined): string[] | undefined {
+  if (patterns === undefined) return undefined;
+  const items = patterns
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
+/**
  * Creates and configures an instance of the MCP server with registered tools and resources.
  * @param tools The shared tool instances to use for server operations.
  * @param config The application configuration.
@@ -71,6 +87,18 @@ export function createMcpServerInstance(
           .boolean()
           .optional()
           .describe("Preserve hash fragments for hash-routed SPA documentation sites."),
+        includePatterns: z
+          .string()
+          .optional()
+          .describe(
+            "Comma-separated patterns for including URLs during scraping. Regex patterns must be wrapped in slashes, e.g. /pattern/. If not set, all are included by default.",
+          ),
+        excludePatterns: z
+          .string()
+          .optional()
+          .describe(
+            "Comma-separated patterns for excluding URLs during scraping. Exclude takes precedence over include. Regex patterns must be wrapped in slashes, e.g. /pattern/.",
+          ),
       },
       {
         title: "Scrape New Library Documentation",
@@ -86,6 +114,8 @@ export function createMcpServerInstance(
         scope,
         followRedirects,
         preserveHashes,
+        includePatterns,
+        excludePatterns,
       }) => {
         // Track MCP tool usage
         telemetry.track(TelemetryEvent.TOOL_USED, {
@@ -113,6 +143,8 @@ export function createMcpServerInstance(
               scope,
               followRedirects,
               preserveHashes,
+              includePatterns: splitPatterns(includePatterns),
+              excludePatterns: splitPatterns(excludePatterns),
             },
           });
 
