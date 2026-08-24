@@ -132,7 +132,7 @@ describe("MCP Server Read-Only Mode", () => {
     const args = scrapeTool.inputSchema.parse({
       url: "https://example.com",
       library: "example-lib",
-      includePatterns: "/version-v0.3/",
+      includePatterns: "/version-v0.3/, /versioned_docs/version-v0.3/",
       excludePatterns: ["/exclude/"],
     });
     await scrapeTool.handler(args);
@@ -140,10 +140,45 @@ describe("MCP Server Read-Only Mode", () => {
     expect(mockTools.scrape.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          includePatterns: ["/version-v0.3/"],
+          includePatterns: ["/version-v0.3/", "/versioned_docs/version-v0.3/"],
           excludePatterns: ["/exclude/"],
         }),
       }),
     );
+  });
+
+  it("should split comma-separated pattern strings without breaking regex constructs", () => {
+    const server = createMcpServerInstance(mockTools, mockConfig);
+    const scrapeTool = (server as any)._registeredTools.scrape_docs;
+    const parse = (includePatterns: string) =>
+      scrapeTool.inputSchema.parse({
+        url: "https://example.com",
+        library: "example-lib",
+        includePatterns,
+      }).includePatterns;
+
+    // Comma inside a regex quantifier is preserved
+    expect(parse("/\\/v\\d{1,3}\\//")).toEqual(["/\\/v\\d{1,3}\\//"]);
+
+    // Comma inside glob brace expansion is preserved
+    expect(parse("**/*.{js,ts}")).toEqual(["**/*.{js,ts}"]);
+
+    // Comma inside a character class is preserved
+    expect(parse("/docs/[a-z,0-9]+/")).toEqual(["/docs/[a-z,0-9]+/"]);
+
+    // Top-level commas split into multiple patterns
+    expect(parse("/version-v0.3/, /versioned_docs/version-v0.3/")).toEqual([
+      "/version-v0.3/",
+      "/versioned_docs/version-v0.3/",
+    ]);
+
+    // Escaped commas are treated as literal commas, not separators
+    expect(parse("/docs/v1\\,2/")).toEqual(["/docs/v1\\,2/"]);
+
+    // Empty segments are dropped
+    expect(parse("/version-v0.3/, , /version-v0.2/")).toEqual([
+      "/version-v0.3/",
+      "/version-v0.2/",
+    ]);
   });
 });
