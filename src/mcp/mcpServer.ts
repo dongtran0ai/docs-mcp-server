@@ -10,20 +10,16 @@ import type { McpServerTools } from "./tools";
 import { createError, createResponse } from "./utils";
 
 /**
- * Splits a comma-separated pattern string into an array of trimmed, non-empty
- * patterns. MCP tool arguments arrive as a single string; the scraper expects
- * an array.
- * @param patterns The raw comma-separated pattern string.
- * @returns An array of patterns, or undefined if no patterns were provided.
+ * Schema for URL pattern arguments. Accepts a single pattern as a string or
+ * multiple patterns as an array of strings, and normalizes both to an array
+ * of trimmed, non-empty patterns. Strings are kept whole so that commas inside
+ * a single pattern (e.g. regex quantifiers or glob brace expansion) are
+ * preserved.
  */
-function splitPatterns(patterns: string | undefined): string[] | undefined {
-  if (patterns === undefined) return undefined;
-  const items = patterns
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-  return items.length > 0 ? items : undefined;
-}
+const patternsSchema = z.union([z.string(), z.array(z.string())]).transform((value) => {
+  const patterns = typeof value === "string" ? [value] : value;
+  return patterns.map((p) => p.trim()).filter(Boolean);
+});
 
 /**
  * Creates and configures an instance of the MCP server with registered tools and resources.
@@ -87,17 +83,15 @@ export function createMcpServerInstance(
           .boolean()
           .optional()
           .describe("Preserve hash fragments for hash-routed SPA documentation sites."),
-        includePatterns: z
-          .string()
+        includePatterns: patternsSchema
           .optional()
           .describe(
-            "Comma-separated patterns for including URLs during scraping. Regex patterns must be wrapped in slashes, e.g. /pattern/. If not set, all are included by default.",
+            "Patterns for including URLs during scraping. Pass a single pattern as a string or multiple patterns as an array. Regex patterns must be wrapped in slashes, e.g. /pattern/. If not set, all are included by default.",
           ),
-        excludePatterns: z
-          .string()
+        excludePatterns: patternsSchema
           .optional()
           .describe(
-            "Comma-separated patterns for excluding URLs during scraping. Exclude takes precedence over include. Regex patterns must be wrapped in slashes, e.g. /pattern/.",
+            "Patterns for excluding URLs during scraping. Pass a single pattern as a string or multiple patterns as an array. Exclude takes precedence over include. Regex patterns must be wrapped in slashes, e.g. /pattern/.",
           ),
       },
       {
@@ -143,8 +137,8 @@ export function createMcpServerInstance(
               scope,
               followRedirects,
               preserveHashes,
-              includePatterns: splitPatterns(includePatterns),
-              excludePatterns: splitPatterns(excludePatterns),
+              includePatterns,
+              excludePatterns,
             },
           });
 

@@ -104,4 +104,46 @@ describe("MCP Server Read-Only Mode", () => {
       }),
     );
   });
+
+  it("should normalize includePatterns/excludePatterns to string arrays", async () => {
+    const server = createMcpServerInstance(mockTools, mockConfig);
+    const scrapeTool = (server as any)._registeredTools.scrape_docs;
+
+    // Single pattern passed as a string stays whole, commas preserved
+    const single = scrapeTool.inputSchema.parse({
+      url: "https://example.com",
+      library: "example-lib",
+      includePatterns: "/\\/v\\d{1,3}\\//",
+    });
+    expect(single.includePatterns).toEqual(["/\\/v\\d{1,3}\\//"]);
+
+    // Multiple patterns passed as an array are kept as-is
+    const multiple = scrapeTool.inputSchema.parse({
+      url: "https://example.com",
+      library: "example-lib",
+      includePatterns: ["/version-v0.3/", "/versioned_docs/version-v0.3/"],
+    });
+    expect(multiple.includePatterns).toEqual([
+      "/version-v0.3/",
+      "/versioned_docs/version-v0.3/",
+    ]);
+
+    // The handler receives the normalized array and propagates it to the scraper
+    const args = scrapeTool.inputSchema.parse({
+      url: "https://example.com",
+      library: "example-lib",
+      includePatterns: "/version-v0.3/",
+      excludePatterns: ["/exclude/"],
+    });
+    await scrapeTool.handler(args);
+
+    expect(mockTools.scrape.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          includePatterns: ["/version-v0.3/"],
+          excludePatterns: ["/exclude/"],
+        }),
+      }),
+    );
+  });
 });
